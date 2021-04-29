@@ -1,0 +1,9 @@
+defaults:
+  - experiment/lightning_data_module: cifar10
+  - experiment/lightning_module: image_classification
+  - experiment/lightning_trainer: trainer
+  - model: resnet50
+  - optim: sgd
+
+data_path: ${oc.env:HOME}/.raiden
+

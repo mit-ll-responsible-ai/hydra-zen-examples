@@ -1,0 +1,31 @@
+_target_: image_classifier.model.ImageClassification
+_recursive_: true
+_convert_: none
+model: ${model}
+optim: ${optim}
+normalizer:
+  _target_: torchvision.transforms.transforms.Normalize
+  _recursive_: true
+  _convert_: none
+  mean:
+  - 0.4914
+  - 0.4822
+  - 0.4465
+  std:
+  - 0.2023
+  - 0.1994
+  - 0.201
+predict:
+  _target_: torch.nn.modules.activation.Softmax
+  _recursive_: true
+  _convert_: none
+  dim: 1
+criterion:
+  _target_: torch.nn.modules.loss.CrossEntropyLoss
+  _recursive_: true
+  _convert_: none
+metrics:
+  Accuracy:
+    _target_: torchmetrics.classification.accuracy.Accuracy
+    _recursive_: true
+    _convert_: none

@@ -1,0 +1,3 @@
+_target_: image_classifier.resnet.resnet50
+_recursive_: true
+_convert_: none

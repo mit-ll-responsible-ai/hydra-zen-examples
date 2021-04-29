@@ -101,11 +101,15 @@ class ImageClassification(LightningModule):
 
         Scheduler: `torch.optim.lr_scheduler.StepLR`
         """
-        optim = self.optim(self.parameters())
+        from hydra.utils import instantiate
+        if self.optim.optimizer == "sgd":
+            optim = torch.optim.SGD(self.parameters(), **self.optim.params)
+        elif self.optim.optimizer == "adam":
+            optim = torch.optim.Adam(self.parameters(), **self.optim.params)
 
         if self.lr_scheduler is not None:
-            sched = [self.lr_scheduler(optim)]
-            return [optim], sched
+            lr_scheduler = instantiate(self.lr_scheduler, optimizer=optim)
+            return [optim], [lr_scheduler]
 
         return optim
 

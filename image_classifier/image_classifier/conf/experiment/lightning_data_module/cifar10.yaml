@@ -1,0 +1,60 @@
+_target_: pytorch_lightning.core.datamodule.LightningDataModule.from_datasets
+_recursive_: true
+_convert_: none
+num_workers: 4
+batch_size: 256
+train_dataset:
+  _target_: torchvision.datasets.cifar.CIFAR10
+  _recursive_: true
+  _convert_: none
+  root: ${data_path}
+  train: true
+  transform:
+    _target_: torchvision.transforms.transforms.Compose
+    _recursive_: true
+    _convert_: none
+    transforms:
+    - _target_: torchvision.transforms.transforms.RandomCrop
+      _recursive_: true
+      _convert_: none
+      size: 32
+      padding: 4
+    - _target_: torchvision.transforms.transforms.RandomHorizontalFlip
+      _recursive_: true
+      _convert_: none
+    - _target_: torchvision.transforms.transforms.ColorJitter
+      _recursive_: true
+      _convert_: none
+      brightness: 0.25
+      contrast: 0.25
+      saturation: 0.25
+    - _target_: torchvision.transforms.transforms.RandomRotation
+      _recursive_: true
+      _convert_: none
+      degrees: 2
+    - _target_: torchvision.transforms.transforms.ToTensor
+      _recursive_: true
+      _convert_: none
+  download: true
+val_dataset:
+  _target_: torchvision.datasets.cifar.CIFAR10
+  _recursive_: true
+  _convert_: none
+  root: ${data_path}
+  train: true
+  transform:
+    _target_: torchvision.transforms.transforms.ToTensor
+    _recursive_: true
+    _convert_: none
+  download: true
+test_dataset:
+  _target_: torchvision.datasets.cifar.CIFAR10
+  _recursive_: true
+  _convert_: none
+  root: ${data_path}
+  train: true
+  transform:
+    _target_: torchvision.transforms.transforms.ToTensor
+    _recursive_: true
+    _convert_: none
+  download: true

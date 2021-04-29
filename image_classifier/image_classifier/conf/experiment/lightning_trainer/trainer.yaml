@@ -1,0 +1,14 @@
+_target_: pytorch_lightning.trainer.trainer.Trainer
+_recursive_: true
+_convert_: none
+callbacks:
+- _target_: pytorch_lightning.callbacks.model_checkpoint.ModelCheckpoint
+  _recursive_: true
+  _convert_: none
+  mode: min
+accelerator: ddp
+num_nodes: 1
+gpus: 1
+max_epochs: 150
+default_root_dir: .
+check_val_every_n_epoch: 1

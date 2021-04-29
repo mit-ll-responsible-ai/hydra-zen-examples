@@ -1,0 +1,4 @@
+optimizer: "sgd"
+params:
+  lr: 0.1
+  momentum: 0.9

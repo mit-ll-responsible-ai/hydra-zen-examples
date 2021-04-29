@@ -1,0 +1,3 @@
+optimizer: "adam"
+params:
+  lr: 0.1
