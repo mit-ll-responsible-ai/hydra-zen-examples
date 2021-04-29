@@ -7,11 +7,10 @@ from hydra_zen import builds
 from pytorch_lightning import LightningDataModule, Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from torchmetrics import Accuracy
-from torchvision import transforms, datasets
+from torchvision import datasets, transforms
 
 from .model import ImageClassification
-from .resnet import resnet50, resnet18
-
+from .resnet import resnet18, resnet50
 
 #################
 # CIFAR10 Dataset
@@ -113,6 +112,3 @@ cs.store(group="model", name="resnet50", node=ResNet50Conf)
 cs.store(group="optim", name="sgd", node=SGDConf)
 
 cs.store(group="optim", name="adam", node=AdamConf)
-
-
-__all__ = [k for k in globals().keys() if "Conf" in k]

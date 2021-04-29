@@ -1,7 +1,6 @@
 # Copyright (c) 2021 Massachusetts Institute of Technology
 from types import FunctionType
-from typing import (Any, Callable, Dict, List, Mapping, Optional, Sequence,
-                    Tuple, Union)
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
 import torch
 from pytorch_lightning import LightningModule
