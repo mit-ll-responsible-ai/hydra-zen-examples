@@ -19,7 +19,6 @@ class ImageClassification(LightningModule):
         predict: Optional[Union[Module, Callable]] = None,
         optim: Optional[FunctionType] = None,
         lr_scheduler: Optional[FunctionType] = None,
-        normalizer: Optional[Module] = None,
         criterion: Union[Module, Callable, None] = None,
         metrics: Union[MetricCollection, Mapping, Sequence[Metric], None] = None,
         **kwargs: Any,
@@ -30,9 +29,6 @@ class ImageClassification(LightningModule):
         ----------
         model: Module
             A PyTorch Module (e.g., Resnet)
-
-        normalizer: Optional[Module] (default: None)
-            A function to normalize the data before calling model (`model(normalize(x))`)
 
         predict: Optional[Union[Module, Callable]] (default: None)
             The function to map the output of the model to predictions (e.g., `torch.softmax`)
@@ -55,7 +51,6 @@ class ImageClassification(LightningModule):
         # Load model
         self.model = model
         self.predictor = predict
-        self.normalizer = normalizer
         self.optim = optim
         self.lr_scheduler = lr_scheduler
 
@@ -80,13 +75,7 @@ class ImageClassification(LightningModule):
         self.metrics = metrics
 
     def forward(self, x: Tensor) -> Tensor:
-        """Forward method for Module.
-
-        If `self.normalizer` is defined returns: `self.model(self.normalizer(x))
-        Otherwise returns `self.model(x)`.
-        """
-        if self.normalizer is not None:
-            x = self.normalizer(x)
+        """Forward method for Module."""
         return self.model(x)
 
     def predict(self, batch: Any, batch_idx: int, dataloader_idx: Optional[int] = None):
