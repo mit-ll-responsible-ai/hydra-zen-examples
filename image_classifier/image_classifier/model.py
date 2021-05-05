@@ -17,8 +17,8 @@ class ImageClassification(LightningModule):
         *,
         model: Module,
         predict: Optional[Union[Module, Callable]] = None,
-        optim: Optional[FunctionType] = None,
-        lr_scheduler: Optional[FunctionType] = None,
+        optim: Optional[Mapping] = None,
+        lr_scheduler: Optional[Mapping] = None,
         criterion: Union[Module, Callable, None] = None,
         metrics: Union[MetricCollection, Mapping, Sequence[Metric], None] = None,
         **kwargs: Any,
@@ -89,11 +89,17 @@ class ImageClassification(LightningModule):
 
         Scheduler: `torch.optim.lr_scheduler.StepLR`
         """
-        optim = self.optim(self.parameters())
+        optim = None
+        if self.optim["name"] == "sgd":
+            optim = torch.optim.SGD(self.parameters(), **self.optim["params"])
+        elif self.optim["name"] == "adam":
+            optim = torch.optim.Adam(self.parameters(), **self.optim["params"])
+        else:
+            raise ValueError("Unknown optimizer value")
 
         if self.lr_scheduler is not None:
-            sched = [self.lr_scheduler(optim)]
-            return [optim], sched
+            sched = torch.optim.lr_scheduler.StepLR(optim, **self.lr_scheduler)
+            return [optim], [sched]
 
         return optim
 
