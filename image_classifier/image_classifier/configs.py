@@ -11,8 +11,6 @@ from omegaconf import MISSING
 # CIFAR10 Dataset
 #################
 
-# transforms.Compose takes a list of transforms
-# - Each transform can be configured and appended to the list
 @dataclass
 class RandomCropConf:
     _target_: str = "torchvision.transforms.RandomCrop"
@@ -106,9 +104,6 @@ class CIFAR10ModuleConf:
 # PyTorch Model
 ##################
 
-# Build a base config for torchvision.models configurations to implement
-# - This allows Hydra to recognize the base type for each model during type validation
-# - `builds_base` ensures the configuration inherits the base configuration
 @dataclass
 class TorchModuleConf:
     ...
@@ -128,9 +123,16 @@ class ResNet50Conf(TorchModuleConf):
 # # PyTorch Optimizer and LR Scheduler
 # ####################################
 
-# Build a base config for torch.optim configurations to implement
-# - This allows Hydra to recognize the base type for each model during type validation
-# - `builds_base` ensures the configuration inherits the base configuration
+# Note: Hydra currently doesn't support partial functions
+# and optimizers need the model to be instantiated and provided
+# as input to the optimizer, e.g.,
+#
+# >> model = resnet18()
+# >> optim = torch.optim.SGD(model.parameters(), lr=0.1)
+#
+# This config provides an "name" field as a string that is checked in
+# `image_classifier.model.ImageClassifer.configure_optimizers`
+
 @dataclass
 class OptimizerConf:
     name: str = "None"
@@ -215,13 +217,9 @@ def register_configs():
     Register Configs in Hydra's Config Store
 
     This allows user to override configs with "GROUP=NAME" using Hydra's Command Line Interface
-    or by using hydra-zen's `hydra_run` or `hydra_multirun` commands.
 
     For example using Hydra's CLI:
     $ python run_file.py optim=sgd
-
-    or the equivalent command using `hydra_run`:
-    >> hydra_run(config, task_function, overrides=["optim=sgd"])
     """
     cs = ConfigStore.instance()
     cs.store(
