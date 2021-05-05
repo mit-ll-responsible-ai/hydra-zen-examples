@@ -138,7 +138,10 @@ Register Configs in Hydra's Config Store
 This allows user to override configs with "GROUP=NAME" using Hydra's Command Line Interface
 or by using hydra-zen's `hydra_run` or `hydra_multirun` commands.
 
-For example: 
+For example using Hydra's CLI:
+$ python run_file.py optim=sgd
+
+or the equivalent command using `hydra_run`:
 >> hydra_run(config, task_function, overrides=["optim=sgd"])
 """
 cs = ConfigStore.instance()
