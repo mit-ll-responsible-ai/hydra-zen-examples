@@ -35,6 +35,17 @@ train_dataset:
     - _target_: torchvision.transforms.transforms.ToTensor
       _recursive_: true
       _convert_: none
+    - _target_: torchvision.transforms.transforms.Normalize
+      _recursive_: true
+      _convert_: none
+      mean:
+      - 0.4914
+      - 0.4822
+      - 0.4465
+      std:
+      - 0.2023
+      - 0.1994
+      - 0.201
   download: true
 val_dataset:
   _target_: torchvision.datasets.cifar.CIFAR10
