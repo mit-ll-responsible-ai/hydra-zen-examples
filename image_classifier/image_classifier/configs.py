@@ -1,10 +1,13 @@
 # Copyright (c) 2021 Massachusetts Institute of Technology
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, List
 
 import torch
 from hydra.core.config_store import ConfigStore
 from hydra_zen import builds
-from pytorch_lightning import LightningDataModule, Trainer
+from omegaconf import MISSING
+from pytorch_lightning import LightningDataModule, LightningModule, Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from torch.nn import Module
 from torch.optim import Optimizer
@@ -58,6 +61,8 @@ CIFAR10DatasetConf = builds(
     download=True,
 )
 
+LightningDataModuleConf = builds(LightningDataModule)
+
 # Uses the classmethod `LightningDataModule.from_datasets`
 # - Each dataset is a dataclass with training or testing transforms
 CIFAR10ModuleConf = builds(
@@ -67,6 +72,7 @@ CIFAR10ModuleConf = builds(
     train_dataset=CIFAR10DatasetConf(transform=TrainTransformsConf),
     val_dataset=CIFAR10DatasetConf(transform=TestTransformsConf, train=False),
     test_dataset=CIFAR10DatasetConf(transform=TestTransformsConf, train=False),
+    builds_bases=(LightningDataModuleConf,),
 )
 
 
@@ -107,6 +113,8 @@ StepLRConf = builds(
 ##########################
 # PyTorch Lightning Module
 ##########################
+LightningModuleConf = builds(LightningModule)
+
 ImageClassificationConf = builds(
     ImageClassification,
     model=ResNet18Conf,
@@ -115,6 +123,7 @@ ImageClassificationConf = builds(
     criterion=builds(torch.nn.CrossEntropyLoss),
     lr_scheduler=StepLRConf,
     metrics=dict(Accuracy=builds(Accuracy)),
+    builds_bases=(LightningModuleConf,),
 )
 
 
@@ -132,6 +141,34 @@ TrainerConf = builds(
     check_val_every_n_epoch=1,
 )
 
+
+##############################
+# Experiment Configs
+# - Replaces config.yaml
+##############################
+@dataclass
+class ExperimentConf:
+    lightning_data_module: LightningDataModuleConf = MISSING
+    lightning_module: LightningModuleConf = ImageClassificationConf(
+        model="${model}", optim="${optim}"
+    )
+    lightning_trainer: TrainerConf = TrainerConf
+
+
+@dataclass
+class Config:
+    defaults: List[Any] = field(
+        default_factory=lambda: [
+            {"experiment/lightning_data_module": "cifar10"},
+            {"model": "resnet18"},
+            {"optim": "sgd"},
+        ]
+    )
+    experiment: ExperimentConf = ExperimentConf()
+    model: TorchModuleConf = MISSING
+    optim: OptimizerConf = MISSING
+
+
 """
 Register Configs in Hydra's Config Store
 
@@ -145,6 +182,9 @@ or the equivalent command using `hydra_run`:
 >> hydra_run(config, task_function, overrides=["optim=sgd"])
 """
 cs = ConfigStore.instance()
+
+cs.store(name="config", node=Config)
+
 cs.store(
     group="experiment/lightning_data_module", name="cifar10", node=CIFAR10ModuleConf
 )
