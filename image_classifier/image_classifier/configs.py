@@ -1,29 +1,35 @@
 # Copyright (c) 2021 Massachusetts Institute of Technology
-from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, List
-
 import torch
 from hydra.core.config_store import ConfigStore
-from hydra_zen import builds
-from omegaconf import MISSING
-from pytorch_lightning import LightningDataModule, LightningModule, Trainer
+from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
-from torch.nn import Module
-from torch.optim import Optimizer
-from torchmetrics import Accuracy
+from pytorch_lightning.core.datamodule import LightningDataModule
+from torchmetrics import Accuracy, MetricCollection
 from torchvision import datasets, transforms
+
+from hydra_zen import MISSING, builds, make_custom_builds_fn
 
 from .model import ImageClassification
 from .resnet import resnet18, resnet50
+from .utils import random_split
+
+###############
+# Custom Builds
+###############
+pbuilds = make_custom_builds_fn(zen_partial=True, populate_full_signature=True)
 
 #################
 # CIFAR10 Dataset
 #################
+CIFARNormalize = builds(
+    transforms.Normalize,
+    mean=[0.4914, 0.4822, 0.4465],
+    std=[0.2023, 0.1994, 0.2010],
+)
 
 # transforms.Compose takes a list of transforms
 # - Each transform can be configured and appended to the list
-TrainTransformsConf = builds(
+TrainTransforms = builds(
     transforms.Compose,
     transforms=[
         builds(transforms.RandomCrop, size=32, padding=4),
@@ -31,101 +37,74 @@ TrainTransformsConf = builds(
         builds(transforms.ColorJitter, brightness=0.25, contrast=0.25, saturation=0.25),
         builds(transforms.RandomRotation, degrees=2),
         builds(transforms.ToTensor),
-        builds(
-            transforms.Normalize,
-            mean=[0.4914, 0.4822, 0.4465],
-            std=[0.2023, 0.1994, 0.2010],
-        ),
+        CIFARNormalize,
     ],
 )
 
-TestTransformsConf = builds(
+TestTransforms = builds(
     transforms.Compose,
-    transforms=[
-        builds(transforms.ToTensor),
-        builds(
-            transforms.Normalize,
-            mean=[0.4914, 0.4822, 0.4465],
-            std=[0.2023, 0.1994, 0.2010],
-        ),
-    ],
+    transforms=[builds(transforms.ToTensor), CIFARNormalize],
 )
+
+# Define a function to split the dataset into train and validation sets
+SplitDataset = builds(random_split, dataset=MISSING, populate_full_signature=True)
 
 # The base configuration for torchvision.dataset.CIFAR10
 # - `transform` is left as None and defined later
-CIFAR10DatasetConf = builds(
+CIFAR10 = builds(
     datasets.CIFAR10,
-    root=str(Path().home() / ".raiden"),
+    root=MISSING,
     train=True,
     transform=None,
     download=True,
 )
 
-LightningDataModuleConf = builds(LightningDataModule)
-
 # Uses the classmethod `LightningDataModule.from_datasets`
 # - Each dataset is a dataclass with training or testing transforms
-CIFAR10ModuleConf = builds(
+CIFAR10DataModule = builds(
     LightningDataModule.from_datasets,
     num_workers=4,
     batch_size=256,
-    train_dataset=CIFAR10DatasetConf(transform=TrainTransformsConf),
-    val_dataset=CIFAR10DatasetConf(transform=TestTransformsConf, train=False),
-    test_dataset=CIFAR10DatasetConf(transform=TestTransformsConf, train=False),
-    builds_bases=(LightningDataModuleConf,),
+    train_dataset=SplitDataset(
+        dataset=CIFAR10(root="${...root}", transform=TrainTransforms), train=True
+    ),
+    val_dataset=SplitDataset(
+        dataset=CIFAR10(root="${...root}", transform=TestTransforms, train=True),
+        train=False,
+    ),
+    test_dataset=CIFAR10(root="${..root}", transform=TestTransforms, train=False),
+    zen_meta=dict(root="${data_dir}"),
 )
-
 
 ##################
 # PyTorch Model
 ##################
-
-# Build a base config for torchvision.models configurations to implement
-# - This allows Hydra to recognize the base type for each model during type validation
-# - `builds_base` ensures the configuration inherits the base configuration
-TorchModuleConf = builds(Module)
-ResNet18Conf = builds(resnet18, builds_bases=(TorchModuleConf,))
-ResNet50Conf = builds(resnet50, builds_bases=(TorchModuleConf,))
+ResNet18 = builds(resnet18)
+ResNet50 = builds(resnet50)
 
 ####################################
 # PyTorch Optimizer and LR Scheduler
 ####################################
-
-# Build a base config for torch.optim configurations to implement
-# - This allows Hydra to recognize the base type for each model during type validation
-# - `builds_base` ensures the configuration inherits the base configuration
-OptimizerConf = builds(Optimizer)
-SGDConf = builds(
-    torch.optim.SGD,
-    lr=0.1,
-    momentum=0.9,
-    builds_bases=(OptimizerConf,),
-    hydra_partial=True,
-)
-AdamConf = builds(
-    torch.optim.Adam, lr=0.1, builds_bases=(OptimizerConf,), hydra_partial=True
-)
-
-StepLRConf = builds(
-    torch.optim.lr_scheduler.StepLR, step_size=50, gamma=0.1, hydra_partial=True
-)
+SGD = pbuilds(torch.optim.SGD, lr=0.1, momentum=0.9)
+Adam = pbuilds(torch.optim.Adam, lr=0.1)
+StepLR = pbuilds(torch.optim.lr_scheduler.StepLR, step_size=50, gamma=0.1)
 
 ##########################
 # PyTorch Lightning Module
 ##########################
-LightningModuleConf = builds(LightningModule)
-
 ImageClassificationConf = builds(
     ImageClassification,
-    model=ResNet18Conf,
-    optim=SGDConf,
+    model=MISSING,
+    optim=None,
     predict=builds(torch.nn.Softmax, dim=1),
     criterion=builds(torch.nn.CrossEntropyLoss),
-    lr_scheduler=StepLRConf,
-    metrics=dict(Accuracy=builds(Accuracy)),
-    builds_bases=(LightningModuleConf,),
+    lr_scheduler=StepLR,
+    metrics=builds(
+        MetricCollection,
+        builds(dict, Accuracy=builds(Accuracy)),
+        hydra_convert="all",
+    ),
 )
-
 
 ###################
 # Lightning Trainer
@@ -135,72 +114,30 @@ TrainerConf = builds(
     callbacks=[builds(ModelCheckpoint, mode="min")],  # easily build a list of callbacks
     accelerator="ddp",
     num_nodes=1,
-    gpus=1,
+    gpus=builds(torch.cuda.device_count),
     max_epochs=150,
-    default_root_dir=".",
-    check_val_every_n_epoch=1,
+    populate_full_signature=True,
 )
-
-
-##############################
-# Experiment Configs
-# - Replaces config.yaml
-##############################
-@dataclass
-class ExperimentConf:
-    lightning_data_module: LightningDataModuleConf = MISSING
-    lightning_module: LightningModuleConf = ImageClassificationConf(
-        model="${model}", optim="${optim}"
-    )
-    lightning_trainer: TrainerConf = TrainerConf
-
-
-@dataclass
-class Config:
-    defaults: List[Any] = field(
-        default_factory=lambda: [
-            {"experiment/lightning_data_module": "cifar10"},
-            {"model": "resnet18"},
-            {"optim": "sgd"},
-        ]
-    )
-    experiment: ExperimentConf = ExperimentConf()
-    model: TorchModuleConf = MISSING
-    optim: OptimizerConf = MISSING
 
 
 """
 Register Configs in Hydra's Config Store
 
 This allows user to override configs with "GROUP=NAME" using Hydra's Command Line Interface
-or by using hydra-zen's `hydra_run` or `hydra_multirun` commands.
+or by using hydra-zen's `launch`.
 
 For example using Hydra's CLI:
 $ python run_file.py optim=sgd
 
 or the equivalent command using `hydra_run`:
->> hydra_run(config, task_function, overrides=["optim=sgd"])
+>> launch(config, task_function, overrides=["optim=sgd"])
 """
 cs = ConfigStore.instance()
 
-cs.store(name="config", node=Config)
-
-cs.store(
-    group="experiment/lightning_data_module", name="cifar10", node=CIFAR10ModuleConf
-)
-
-cs.store(
-    group="experiment/lightning_module",
-    name="image_classification",
-    node=ImageClassificationConf,
-)
-
-cs.store(group="experiment/lightning_trainer", name="trainer", node=TrainerConf)
-
-cs.store(group="model", name="resnet18", node=ResNet18Conf)
-
-cs.store(group="model", name="resnet50", node=ResNet50Conf)
-
-cs.store(group="optim", name="sgd", node=SGDConf)
-
-cs.store(group="optim", name="adam", node=AdamConf)
+cs.store(group="data", name="cifar10", node=CIFAR10DataModule)
+cs.store(group="lightning", name="image_classification", node=ImageClassificationConf)
+cs.store(group="trainer", name="trainer", node=TrainerConf)
+cs.store(group="model", name="resnet18", node=ResNet18)
+cs.store(group="model", name="resnet50", node=ResNet50)
+cs.store(group="optim", name="sgd", node=SGD)
+cs.store(group="optim", name="adam", node=Adam)
