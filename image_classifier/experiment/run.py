@@ -8,8 +8,17 @@ from omegaconf import DictConfig
 
 from hydra_zen import MISSING, make_config
 
-from .configs import ImageClassificationConf, TrainerConf
-from .utils import set_seed
+
+try:
+    import image_classifier
+except ImportError:
+    import sys
+    path = (Path.cwd() / "..").absolute()
+    sys.path.insert(0, str(path))
+finally:
+    from image_classifier.configs import ImageClassificationConf, TrainerConf
+    from image_classifier.utils import set_seed
+
 
 # Experiment Configs
 # - Replaces config.yaml
@@ -26,6 +35,7 @@ Config = make_config(
     # Experiment Modules
     data=MISSING,
     model=MISSING,
+    optim=MISSING,
     lightning=ImageClassificationConf,
     trainer=TrainerConf,
     #
