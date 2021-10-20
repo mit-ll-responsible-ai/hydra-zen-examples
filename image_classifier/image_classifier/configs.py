@@ -59,19 +59,24 @@ CIFAR10 = builds(
     download=True,
 )
 
+CIFAR10Train = SplitDataset(
+    dataset=CIFAR10(root=MISSING, transform=TrainTransforms),
+    train=True,
+)
+
+CIFAR10Val = SplitDataset(
+    dataset=CIFAR10(root=MISSING, transform=TestTransforms),
+    train=False,
+)
+
 # Uses the classmethod `LightningDataModule.from_datasets`
 # - Each dataset is a dataclass with training or testing transforms
 CIFAR10DataModule = builds(
     LightningDataModule.from_datasets,
     num_workers=4,
     batch_size=256,
-    train_dataset=SplitDataset(
-        dataset=CIFAR10(root="${...root}", transform=TrainTransforms), train=True
-    ),
-    val_dataset=SplitDataset(
-        dataset=CIFAR10(root="${...root}", transform=TestTransforms, train=True),
-        train=False,
-    ),
+    train_dataset=CIFAR10Train(root="${..root}"),
+    val_dataset=CIFAR10Val(root="${..root}"),
     test_dataset=CIFAR10(root="${..root}", transform=TestTransforms, train=False),
     zen_meta=dict(root="${data_dir}"),
 )

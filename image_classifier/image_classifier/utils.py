@@ -7,15 +7,18 @@ from torch.utils.data.dataset import Dataset
 
 
 def random_split(
-    dataset: Dataset, val_split: float = 0.1, train: bool = True, random_seed: int = 32
+    dataset: Dataset,
+    val_split: float = 0.1,
+    train: bool = True,
+    random_seed: int = 32,
 ) -> Dataset:
     g = torch.Generator().manual_seed(random_seed)
     nval = int(len(dataset) * val_split)
     ntrain = len(dataset) - nval
-    train_split, val_split = _random_split(dataset, [ntrain, nval], g)
+    train_data, val_data = _random_split(dataset, [ntrain, nval], g)
     if train:
-        return train_split
-    return val_split
+        return train_data
+    return val_data
 
 
 def set_seed(random_seed) -> None:

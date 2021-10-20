@@ -1,4 +1,4 @@
-# hydra-zen-example
+# hydra-zen Examples
 
 A variety of examples using hydra-zen.
 

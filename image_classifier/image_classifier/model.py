@@ -7,14 +7,15 @@ from torch import Tensor
 from torch.nn import Module
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
-from torchmetrics import Metric, MetricCollection
+from torchmetrics import MetricCollection
 from typing_extensions import Literal
 
+# Types for documentation
 PartialOptimizer = Callable[[Iterable], Optimizer]
 PartialLRScheduler = Callable[[Optimizer], _LRScheduler]
 Criterion = Callable[[Tensor, Tensor], Tensor]
 Perturbation = Callable[[Module, Tensor, Tensor], Tuple[Tensor, Tensor]]
-Predictor = Callable[[Optional[Tensor]], Tensor]
+Predictor = Callable[[Tensor], Tensor]
 
 
 class ImageClassification(LightningModule):
@@ -36,20 +37,20 @@ class ImageClassification(LightningModule):
         model: Module
             A PyTorch Module (e.g., Resnet)
 
-        predict: Optional[Union[Module, Callable]] (default: None)
+        predict: Predictor
             The function to map the output of the model to predictions (e.g., `torch.softmax`)
 
-        criterion: Optional[Union[Module, Callable, str]] (default: None)
+        criterion: Criterion
             Criterion for calculating the loss. If `criterion` is a string the loss function
             is assumed to be an attribute of the model.
 
-        optim: Optional[Dict] (default: None)
+        optim: PartialOptimizer | None (default: None)
             Parameters for the optimizer. Current default optimizer is `SGD`.
 
-        lr_scheduler: Optional[Dict] (default: None)
+        lr_scheduler: PartialLRScheduler | None (default: None)
             Parameters for StepLR. Current default scheduler is `StepLR`.
 
-        metrics: Optional[Union[MetricCollection, Mapping, List[Metric]]] (default: None)
+        metrics: MetricCollection | None (default: None)
             Define PyTorch Lightning `Metric`s.  This module utilizes `MetricCollection`.
         """
         super().__init__(**kwargs)
@@ -60,25 +61,23 @@ class ImageClassification(LightningModule):
         self.optim = optim
         self.lr_scheduler = lr_scheduler
         self.criterion = criterion
+
+        if metrics is not None:
+            assert isinstance(metrics, MetricCollection)
+
         self.metrics = metrics
 
     def forward(self, x: Tensor) -> Tensor:
         """Forward method for Module."""
         return self.model(x)
 
-    def predict(self, batch: Any, batch_idx: int, dataloader_idx: Optional[int] = None):
-        x, y = batch
-        return self.predictor(self(x))
+    def predict(self, batch: Any, *args, **kwargs):
+        return self.predictor(self(batch[0]))
 
     def configure_optimizers(
         self,
     ) -> Union[Optimizer, Tuple[List[Optimizer], List[Any]], None]:
-        """Sets up optimizer and learning-rate scheduler.
-
-        Optimizer: `torch.optim.SGD`
-
-        Scheduler: `torch.optim.lr_scheduler.StepLR`
-        """
+        """Sets up optimizer and learning-rate scheduler."""
         if self.optim is not None:
             optim = self.optim(self.parameters())
 
@@ -90,21 +89,60 @@ class ImageClassification(LightningModule):
         return None
 
     def step(
-        self, batch: Tuple[Tensor, Tensor], batch_id: int, stage: str = "Train"
+        self, batch: Tuple[Tensor, Tensor], stage: str = "Train"
     ) -> Dict[str, Tensor]:
         """Executes common step across training, validation and test."""
         x, y = batch
-
-        # Pass through the model and get the loss
         logits = self.forward(x)
         loss = self.criterion(logits, y)
         self.log(f"{stage}/Loss", loss)
+        #
+        # Normally metrics would be updated here (See below when needing to support DP)
+        #
         return dict(loss=loss, pred=self.predictor(logits), target=y)
+
+    def training_step(
+        self, batch: Tuple[Tensor, Tensor], *args, **kwargs
+    ) -> Dict[str, Tensor]:
+        return self.step(batch, stage="Train")
+
+    def validation_step(
+        self, batch: Tuple[Tensor, Tensor], *args, **kwargs
+    ) -> Dict[str, Tensor]:
+        return self.step(batch, stage="Val")
+
+    def test_step(
+        self, batch: Tuple[Tensor, Tensor], *args, **kwargs
+    ) -> Dict[str, Tensor]:
+        return self.step(batch, stage="Test")
+
+    # To support both DDP and DP we need to use `<stage>_step_end` to update metrics
+    # See: https://github.com/PyTorchLightning/pytorch-lightning/pull/4494
+
+    def training_step_end(self, outputs: Union[Tensor, Dict]) -> torch.Tensor:
+        if isinstance(outputs, dict):
+            loss = outputs["loss"].mean()
+            self.update_metrics(outputs, stage="Train")
+            return loss
+        return outputs
+
+    def validation_step_end(self, outputs: Union[Tensor, Dict]) -> Tensor:
+        if isinstance(outputs, dict):
+            loss = outputs["loss"].mean()
+            self.update_metrics(outputs, stage="Val")
+            return loss
+        return outputs
+
+    def test_step_end(self, outputs: Union[Tensor, Dict]) -> Tensor:
+        if isinstance(outputs, dict):
+            loss = outputs["loss"].mean()
+            self.update_metrics(outputs, stage="Test")
+            return loss
+        return outputs
 
     def update_metrics(
         self, outputs: Dict[Literal["pred", "target"], Tensor], stage: str = "Train"
     ):
-        # TODO: Metrics are updated here because it won't work to update in "step" in "dp" mode
         if "pred" not in outputs or "target" not in outputs:
             raise TypeError(
                 "ouputs dictionary expected contain 'pred' and 'target' keys."
@@ -118,39 +156,3 @@ class ImageClassification(LightningModule):
                 val = metric(pred_y, true_y)
                 if isinstance(val, Tensor) and val.ndim == 0:
                     self.log(f"{stage}/{key}", val)
-
-    def training_step(
-        self, batch: Tuple[Tensor, Tensor], batch_id: int
-    ) -> Dict[str, Tensor]:
-        return self.step(batch, batch_id, stage="Train")
-
-    def training_step_end(self, outputs: Union[Tensor, Dict]) -> torch.Tensor:
-        if isinstance(outputs, dict):
-            loss = outputs["loss"].mean()
-            self.update_metrics(outputs, stage="Train")
-            return loss
-        return outputs
-
-    def validation_step(
-        self, batch: Tuple[Tensor, Tensor], batch_id: int
-    ) -> Dict[str, Tensor]:
-        return self.step(batch, batch_id, stage="Val")
-
-    def validation_step_end(self, outputs: Union[Tensor, Dict]) -> Tensor:
-        if isinstance(outputs, dict):
-            loss = outputs["loss"].mean()
-            self.update_metrics(outputs, stage="Val")
-            return loss
-        return outputs
-
-    def test_step(
-        self, batch: Tuple[Tensor, Tensor], batch_id: int
-    ) -> Dict[str, Tensor]:
-        return self.step(batch, batch_id, stage="Test")
-
-    def test_step_end(self, outputs: Union[Tensor, Dict]) -> Tensor:
-        if isinstance(outputs, dict):
-            loss = outputs["loss"].mean()
-            self.update_metrics(outputs, stage="Test")
-            return loss
-        return outputs
