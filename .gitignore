@@ -6,7 +6,7 @@ multirun
 lightning_logs
 .hydra
 *.pt
-*.ipynb*
+*.ipynb_*
 data
 
 # Byte-compiled / optimized / DLL files

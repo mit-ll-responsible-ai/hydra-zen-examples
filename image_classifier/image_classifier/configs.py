@@ -9,13 +9,13 @@ from torchvision import datasets, transforms
 
 from hydra_zen import MISSING, builds, make_custom_builds_fn
 
-from .model import ImageClassification
-from .resnet import resnet18, resnet50
+from .model import BaseImageClassification, ResNet18Classifier, ResNet50Classifier
 from .utils import random_split
 
 ###############
 # Custom Builds
 ###############
+sbuilds = make_custom_builds_fn(populate_full_signature=True)
 pbuilds = make_custom_builds_fn(zen_partial=True, populate_full_signature=True)
 
 #################
@@ -47,7 +47,7 @@ TestTransforms = builds(
 )
 
 # Define a function to split the dataset into train and validation sets
-SplitDataset = builds(random_split, dataset=MISSING, populate_full_signature=True)
+SplitDataset = sbuilds(random_split, dataset=MISSING)
 
 # The base configuration for torchvision.dataset.CIFAR10
 # - `transform` is left as None and defined later
@@ -59,15 +59,6 @@ CIFAR10 = builds(
     download=True,
 )
 
-CIFAR10Train = SplitDataset(
-    dataset=CIFAR10(root=MISSING, transform=TrainTransforms),
-    train=True,
-)
-
-CIFAR10Val = SplitDataset(
-    dataset=CIFAR10(root=MISSING, transform=TestTransforms),
-    train=False,
-)
 
 # Uses the classmethod `LightningDataModule.from_datasets`
 # - Each dataset is a dataclass with training or testing transforms
@@ -75,17 +66,17 @@ CIFAR10DataModule = builds(
     LightningDataModule.from_datasets,
     num_workers=4,
     batch_size=256,
-    train_dataset=CIFAR10Train(root="${..root}"),
-    val_dataset=CIFAR10Val(root="${..root}"),
+    train_dataset=SplitDataset(
+        dataset=CIFAR10(root="${...root}", transform=TrainTransforms),
+        train=True,
+    ),
+    val_dataset=SplitDataset(
+        dataset=CIFAR10(root="${...root}", transform=TestTransforms),
+        train=False,
+    ),
     test_dataset=CIFAR10(root="${..root}", transform=TestTransforms, train=False),
     zen_meta=dict(root="${data_dir}"),
 )
-
-##################
-# PyTorch Model
-##################
-ResNet18 = builds(resnet18)
-ResNet50 = builds(resnet50)
 
 ####################################
 # PyTorch Optimizer and LR Scheduler
@@ -97,9 +88,8 @@ StepLR = pbuilds(torch.optim.lr_scheduler.StepLR, step_size=50, gamma=0.1)
 ##########################
 # PyTorch Lightning Module
 ##########################
-ImageClassificationConf = builds(
-    ImageClassification,
-    model=MISSING,
+ImageClassification = builds(
+    BaseImageClassification,
     optim=None,
     predict=builds(torch.nn.Softmax, dim=1),
     criterion=builds(torch.nn.CrossEntropyLoss),
@@ -111,6 +101,9 @@ ImageClassificationConf = builds(
     ),
 )
 
+ResNet18 = builds(ResNet18Classifier, builds_bases=(ImageClassification,))
+ResNet50 = builds(ResNet50Classifier, builds_bases=(ImageClassification,))
+
 ###################
 # Lightning Trainer
 ###################
@@ -119,8 +112,8 @@ TrainerConf = builds(
     callbacks=[builds(ModelCheckpoint, mode="min")],  # easily build a list of callbacks
     accelerator="ddp",
     num_nodes=1,
-    gpus=builds(torch.cuda.device_count),
-    max_epochs=150,
+    gpus=builds(torch.cuda.device_count),  # use all GPUs on the system
+    max_epochs=100,
     populate_full_signature=True,
 )
 
@@ -140,9 +133,9 @@ or the equivalent command using `hydra_run`:
 cs = ConfigStore.instance()
 
 cs.store(group="data", name="cifar10", node=CIFAR10DataModule)
-cs.store(group="lightning", name="image_classification", node=ImageClassificationConf)
-cs.store(group="trainer", name="trainer", node=TrainerConf)
 cs.store(group="model", name="resnet18", node=ResNet18)
 cs.store(group="model", name="resnet50", node=ResNet50)
-cs.store(group="optim", name="sgd", node=SGD)
-cs.store(group="optim", name="adam", node=Adam)
+cs.store(group="trainer", name="trainer", node=TrainerConf)
+cs.store(group="model/optim", name="sgd", node=SGD)
+cs.store(group="model/optim", name="adam", node=Adam)
+cs.store(group="model/optim", name="none", node=None)

@@ -2,21 +2,24 @@
 from pathlib import Path
 
 import hydra
+import torch
 from hydra.core.config_store import ConfigStore
 from hydra.utils import instantiate
 from omegaconf import DictConfig
+from torch.nn import Module
 
 from hydra_zen import MISSING, make_config
 
-
+# If the repo isn't in the PYTHONPATH let's load it
 try:
     import image_classifier
 except ImportError:
     import sys
+
     path = (Path.cwd() / "..").absolute()
     sys.path.insert(0, str(path))
 finally:
-    from image_classifier.configs import ImageClassificationConf, TrainerConf
+    from image_classifier.configs import TrainerConf
     from image_classifier.utils import set_seed
 
 
@@ -29,20 +32,19 @@ Config = make_config(
         "_self_",  # See https://hydra.cc/docs/upgrades/1.0_to_1.1/default_composition_order
         {"data": "cifar10"},
         {"model": "resnet18"},
-        {"optim": "sgd"},
+        {"model/optim": "sgd"},
     ],
     #
     # Experiment Modules
     data=MISSING,
     model=MISSING,
-    optim=MISSING,
-    lightning=ImageClassificationConf,
     trainer=TrainerConf,
     #
     # Experiment Constants
     data_dir=str(Path().home() / ".data"),
     random_seed=928,
     testing=False,
+    ckpt_path=None,
 )
 
 
@@ -50,19 +52,31 @@ cs = ConfigStore.instance()
 
 cs.store(name="config", node=Config)
 
-
-def task_fn(cfg: DictConfig):
+# Experiment Task Function
+def task_fn(cfg: DictConfig) -> Module:
+    # Set seed BEFORE instantiating anything
     set_seed(cfg.random_seed)
+
+    # Data and Lightning Modules
     data = instantiate(cfg.data)
-    model = instantiate(cfg.model)
-    optim = instantiate(cfg.optim)
-    pl_module = instantiate(cfg.lightning, model=model, optim=optim)
+    pl_module = instantiate(cfg.model)
+
+    # Load a checkpoint if defined
+    if cfg.ckpt_path is not None:
+        ckpt_data = torch.load(cfg.ckpt_path)
+        assert "state_dict" in ckpt_data
+        pl_module.load_state_dict(ckpt_data["state_dict"])
+
+    # The PL Trainer
     trainer = instantiate(cfg.trainer)
+
+    # Set training or testing mode
     if cfg.testing:
         trainer.test(pl_module, datamodule=data)
     else:
         trainer.fit(pl_module, datamodule=data)
-    return model
+
+    return pl_module
 
 
 @hydra.main(config_path=None, config_name="config")

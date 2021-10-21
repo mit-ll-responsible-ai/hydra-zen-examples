@@ -10,6 +10,8 @@ from torch.optim.lr_scheduler import _LRScheduler
 from torchmetrics import MetricCollection
 from typing_extensions import Literal
 
+from .resnet import resnet18, resnet50
+
 # Types for documentation
 PartialOptimizer = Callable[[Iterable], Optimizer]
 PartialLRScheduler = Callable[[Optimizer], _LRScheduler]
@@ -18,25 +20,21 @@ Perturbation = Callable[[Module, Tensor, Tensor], Tuple[Tensor, Tensor]]
 Predictor = Callable[[Tensor], Tensor]
 
 
-class ImageClassification(LightningModule):
+class BaseImageClassification(LightningModule):
+    model: Module
+
     def __init__(
         self,
-        *,
-        model: Module,
         predict: Predictor,
         criterion: Criterion,
         optim: Optional[PartialOptimizer] = None,
         lr_scheduler: Optional[PartialLRScheduler] = None,
         metrics: Optional[MetricCollection] = None,
-        **kwargs: Any,
     ) -> None:
         """Initialization of Module
 
         Parameters
         ----------
-        model: Module
-            A PyTorch Module (e.g., Resnet)
-
         predict: Predictor
             The function to map the output of the model to predictions (e.g., `torch.softmax`)
 
@@ -53,10 +51,7 @@ class ImageClassification(LightningModule):
         metrics: MetricCollection | None (default: None)
             Define PyTorch Lightning `Metric`s.  This module utilizes `MetricCollection`.
         """
-        super().__init__(**kwargs)
-
-        # Load model
-        self.model = model
+        super().__init__()
         self.predictor = predict
         self.optim = optim
         self.lr_scheduler = lr_scheduler
@@ -156,3 +151,37 @@ class ImageClassification(LightningModule):
                 val = metric(pred_y, true_y)
                 if isinstance(val, Tensor) and val.ndim == 0:
                     self.log(f"{stage}/{key}", val)
+
+
+class ResNet18Classifier(BaseImageClassification):
+    def __init__(
+        self,
+        *,
+        predict: Predictor,
+        criterion: Criterion,
+        optim: Optional[PartialOptimizer] = None,
+        lr_scheduler: Optional[PartialLRScheduler] = None,
+        metrics: Optional[MetricCollection] = None,
+    ) -> None:
+        super().__init__(
+            predict, criterion, optim=optim, lr_scheduler=lr_scheduler, metrics=metrics
+        )
+
+        self.model = resnet18()
+
+
+class ResNet50Classifier(BaseImageClassification):
+    def __init__(
+        self,
+        *,
+        predict: Predictor,
+        criterion: Criterion,
+        optim: Optional[PartialOptimizer] = None,
+        lr_scheduler: Optional[PartialLRScheduler] = None,
+        metrics: Optional[MetricCollection] = None,
+    ) -> None:
+        super().__init__(
+            predict, criterion, optim=optim, lr_scheduler=lr_scheduler, metrics=metrics
+        )
+
+        self.model = resnet50()
