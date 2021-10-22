@@ -12,15 +12,15 @@ from hydra_zen import MISSING, make_config
 
 # If the repo isn't in the PYTHONPATH let's load it
 try:
-    import image_classifier
+    import hydra_zen_example.image_classifier
 except ImportError:
     import sys
 
     path = (Path.cwd() / "..").absolute()
     sys.path.insert(0, str(path))
 finally:
-    from image_classifier.configs import TrainerConf
-    from image_classifier.utils import set_seed
+    from hydra_zen_example.image_classifier.configs import TrainerConf
+    from hydra_zen_example.image_classifier.utils import set_seed
 
 
 # Experiment Configs

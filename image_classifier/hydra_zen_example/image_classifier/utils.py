@@ -1,3 +1,4 @@
+# Copyright (c) 2021 Massachusetts Institute of Technology
 import random
 
 import numpy as np
