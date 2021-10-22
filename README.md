@@ -2,6 +2,10 @@
 
 A variety of examples using hydra-zen.
 
+## Examples
+
+- [image_classification] Demonstrates configuration of an image classification model using PyTorch Lightning.
+
 ## Contributions
 
 This is supported by the hydra-zen team and community.
